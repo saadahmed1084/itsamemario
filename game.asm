@@ -55,7 +55,7 @@ ArtLineC BYTE "    Ready? (3s)     ", 0
 
 ground BYTE " --------------------------------------------------------------------------------------------------------------------------------------------------",0
 strScore BYTE "Your score is: ",0
-score BYTE 0
+score BYTE 0 ; Score is a single byte, max 255
 xCoinPos BYTE ?
 yCoinPos BYTE ?
 inputChar BYTE ?
@@ -185,6 +185,57 @@ ret
 ClearPauseMessage ENDP
 
 ; --- COIN ROUTINES ---
+CheckCoinCollection PROC
+pushad
+    
+cmp coinActive, 0
+je CoinCheckDone
+    
+mov al, yPos
+cmp al, coinY
+jne CoinCheckDone
+    
+mov al, xPos
+mov bl, coinX
+    
+cmp al, bl
+jge XPosGreater
+    
+sub bl, al
+jmp CheckDistance
+
+XPosGreater:
+sub al, bl
+mov bl, al
+
+CheckDistance:
+cmp bl, 2
+jge CoinCheckDone
+    
+pushad
+mov eax, 000Fh
+call SetTextColor
+mov dl, coinX
+mov dh, coinY
+call Gotoxy
+mov al, ' '
+call WriteChar
+popad
+    
+; *** SCORE FIX: Increment score by 10 ***
+mov al, score
+add al, 10
+mov score, al
+    
+mov coinActive, 0
+    
+call GenerateCoin
+    
+CoinCheckDone:
+popad
+ret
+CheckCoinCollection ENDP
+
 GenerateCoin PROC
 pushad
     
@@ -237,53 +288,6 @@ DrawCoin ENDP
 ClearOldCoin PROC
 ret
 ClearOldCoin ENDP
-
-CheckCoinCollection PROC
-pushad
-    
-cmp coinActive, 0
-je CoinCheckDone
-    
-mov al, yPos
-cmp al, coinY
-jne CoinCheckDone
-    
-mov al, xPos
-mov bl, coinX
-    
-cmp al, bl
-jge XPosGreater
-    
-sub bl, al
-jmp CheckDistance
-
-XPosGreater:
-sub al, bl
-mov bl, al
-
-CheckDistance:
-cmp bl, 2
-jge CoinCheckDone
-    
-pushad
-mov eax, 000Fh
-call SetTextColor
-mov dl, coinX
-mov dh, coinY
-call Gotoxy
-mov al, ' '
-call WriteChar
-popad
-    
-inc score
-mov coinActive, 0
-    
-call GenerateCoin
-    
-CoinCheckDone:
-popad
-ret
-CheckCoinCollection ENDP
 ; --- END COIN ROUTINES ---
 
 
@@ -627,7 +631,7 @@ pushad
 cmp goombaActive, 0
 je GoombaNoMove
     
-; --- FIX: TIMER LOGIC ---
+; --- TIMER LOGIC ---
 ; Decrease the timer if active, and skip movement if timer > 0.
 cmp goombaResetTimer, 0
 je AllowMovement
@@ -645,7 +649,6 @@ jge GoombaNoMove
     
 ; Reset Goomba off-screen (e.g., far right)
 mov goombaX, 70
-; No timer needed here, only on life loss/stomp reset.
     
 GoombaNoMove:
 popad
@@ -657,11 +660,11 @@ CheckCollisionAndLives PROC
 cmp goombaActive, 0
 je CollisionCheckDone
 
-; *** FIX: Skip collision if Goomba is protected (timer > 0) ***
+; *** Skip collision if Goomba is protected (timer > 0) ***
 cmp goombaResetTimer, 0
 jne CollisionCheckDone
 
-; --- 1. CHECK X COLLISION (Range Check for Tunneling) ---
+; --- 1. CHECK X COLLISION (Range Check) ---
 mov al, xPos
 mov bl, goombaX
     
@@ -696,7 +699,7 @@ jmp PlayerGotHit_Start
 
 CheckMidAirHit:
 ; *** CORE FIX: If Mario is mid-air (yPos < 28), ignore horizontal collision ***
-; This allows Mario to jump over the Goomba without losing a life.
+; If X-proximity is confirmed and Mario is airborne, he should safely jump over the Goomba.
 jmp CollisionCheckDone
 
 
@@ -713,6 +716,15 @@ call Gotoxy
 mov al, ' '
 call WriteChar
 popad
+; *** SCORE FIX: Increment score by 10 ***
+mov al, score
+add al, 10
+mov score, al
+; --- GOOMBA REGENERATION ---
+mov goombaActive, 1 ; Re-activate the Goomba
+mov goombaX, 70     ; Reset off-screen far right
+mov goombaResetTimer, 2 ; Give it a brief protection timer
+
 ; Force a standard bounce jump
 mov al, JUMP_VELOCITY_INIT
 mov yVelocity, al
